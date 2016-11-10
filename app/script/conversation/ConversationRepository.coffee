@@ -259,7 +259,8 @@ class z.conversation.ConversationRepository
         else
           @logger.log @logger.levels.INFO,
             "Loaded first #{events.length} event(s) for conversation '#{conversation_et.id}'", events
-        mapped_messages = @_add_events_to_conversation events: events, conversation_et
+        return @_add_events_to_conversation events: events, conversation_et
+      .then (mapped_messages) =>
         conversation_et.is_pending false
         resolve mapped_messages
       .catch (error) =>
@@ -1948,17 +1949,18 @@ class z.conversation.ConversationRepository
   @return [Array<z.entity.Message>] Array of mapped messages
   ###
   _add_events_to_conversation: (json, conversation_et, prepend = true) ->
-    return if not json?
+    message_ets = null
+    return Promise.resolve().then =>
+      return if not json?
+      message_ets = @event_mapper.map_json_events json, conversation_et
+      return Promise.all (@_update_user_ets message_et for message_et in message_ets)
+    .then =>
+      if prepend and conversation_et.messages().length > 0
+        conversation_et.prepend_messages message_ets
+      else
+        conversation_et.add_messages message_ets
 
-    message_ets = @event_mapper.map_json_events json, conversation_et
-    for message_et in message_ets
-      @_update_user_ets message_et
-    if prepend and conversation_et.messages().length > 0
-      conversation_et.prepend_messages message_ets
-    else
-      conversation_et.add_messages message_ets
-
-    return message_ets
+      return message_ets
 
   ###
   Check for duplicates by event IDs and cache the event ID.
